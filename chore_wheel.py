@@ -1,9 +1,13 @@
 from abc import ABC
 from dataclasses import dataclass
 import datetime
+from io import BytesIO
+from functools import cached_property
 import json
-from typing import Dict
+import os
+from typing import Dict, Iterable
 
+import boto3
 from dateutil import rrule
 
 
@@ -21,71 +25,70 @@ class Chore:
     work: int
 
 
-class PeopleDAL:
-    _FNAME = 'people.json'
+class _S3DAL(ABC):
 
-    def __init__(self):
-        self._people = None
+    def __init__(self, bucket_name, key_name):
+        self._bucket_name = bucket_name
+        self._key_name = key_name
 
-    @property
+    def _read(self) -> str:
+        client = boto3.client('s3', region_name='us-east-1')
+        data = client.get_object(Bucket=self._bucket_name, Key=self._key_name)['Body']
+        return data.read()
+
+    def _readlines(self) -> Iterable[str]:
+        client = boto3.client('s3', region_name='us-east-1')
+        data = client.get_object(Bucket=self._bucket_name, Key=self._key_name)['Body']
+        for line in BytesIO(data.read()):
+            yield line.decode('utf8').strip()
+
+    def _upload(self, f: BytesIO):
+        client = boto3.client('s3', region_name='us-east-1')
+        client.put_object(Body=f, Bucket=self._bucket_name, Key=self._key_name)
+
+
+class PeopleDAL(_S3DAL):
+
+    @cached_property
     def people(self):
-        if self._people is None:
-            rows = [
-                json.loads(row.strip()) for row in
-                open(self._FNAME, 'r').readlines()
-            ]
-            self._people = [
-                Person(row['name'], row['email']) for row in rows
-            ]
-        return self._people
+        rows = [json.loads(row.strip()) for row in self._readlines()]
+        return [Person(row['name'], row['email']) for row in rows]
 
     def store(self):
-        with open(self._FNAME, 'w') as f:
-            for p in self.people:
-                person_json = json.dumps({
-                    'name': p.name, 'email': p.email, 'total_work': p.total_work
-                })
-                f.write(person_json + '\n')
+        f = BytesIO()
+        for p in self.people:
+            person_json = json.dumps({
+                'name': p.name, 'email': p.email, 'total_work': p.total_work
+            })
+            f.write(person_json.encode('utf8') + b'\n')
+        self._upload(f)
 
 
-class ChoreDAL:
+class ChoreDAL(_S3DAL):
 
-    _FNAME = 'chores.json'
-
-    def __init__(self):
-        self._chores = None
-
-    @property
+    @cached_property
     def chores(self):
-        if self._chores is None:
-            rows = [
-                json.loads(row.strip()) for row in
-                open(self._FNAME, 'r').readlines()
-            ]
-            self._chores = [
-                Chore(row['name'], row['rrule'], row['work']) for row in rows
-            ]
-        return self._chores
+        rows = [json.loads(row.strip()) for row in self._readlines()]
+        return [Chore(row['name'], row['rrule'], row['work']) for row in rows]
 
 
-class ChoreBlacklistDAL:
-
-    _FNAME = 'chore_blacklist.json'
-
-    def __init__(self):
-        self._blacklist = None
+class ChoreBlacklistDAL(_S3DAL):
 
     @property
     def blacklist(self):
-        if self._blacklist is None:
-            self._blacklist = json.loads(open(self._FNAME, 'r').read().strip())
-        return self._blacklist
+        return json.loads(self._read())
 
 
-people_dal = PeopleDAL()
-chore_dal = ChoreDAL()
-blacklist_dal = ChoreBlacklistDAL()
+BUCKET_NAME = os.environ.get('BUCKET')
+PEOPLE_KEY = os.environ.get('PEOPLE')
+CHORES_KEY = os.environ.get('CHORES')
+BLACKLIST_KEY = os.environ.get('BLACKLIST')
 START_DATE = datetime.datetime(2021, 6, 21)
+
+people_dal = PeopleDAL(BUCKET_NAME, PEOPLE_KEY)
+chore_dal = ChoreDAL(BUCKET_NAME, CHORES_KEY)
+blacklist_dal = ChoreBlacklistDAL(BUCKET_NAME, BLACKLIST_KEY)
+
 
 
 def _todays_chores():
