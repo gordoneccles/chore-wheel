@@ -96,6 +96,7 @@ BUCKET_NAME = os.environ.get('BUCKET')
 PEOPLE_KEY = os.environ.get('PEOPLE')
 CHORES_KEY = os.environ.get('CHORES')
 BLACKLIST_KEY = os.environ.get('BLACKLIST')
+FROM_EMAIL = os.environ.get('FROM_EMAIL')
 START_DATE = datetime.datetime(2021, 6, 21)
 
 people_dal = PeopleDAL(BUCKET_NAME, PEOPLE_KEY)
@@ -131,10 +132,22 @@ def _next_person_for(chore):
 
 
 def _alert_person_to_chore(person, chore):
-    msg = f'Hey {person.name}, time to {chore.name}'
-    logger.info('******************EMAIL************************')
-    logger.info(msg)
-    logger.info('***********************************************')
+    client = boto3.client('ses', region_name='us-east-1')
+    body = f'Hey {person.name}, time to {chore.name}'
+    subject = f'Chore today: {chore.name}'
+    html_body = f'<div>{body}</div>'
+    logger.info(f'Emailing {person.email} to {chore.name}')
+    client.send_email(
+        Source=FROM_EMAIL,
+        Destination={'ToAddresses': [person.email]},
+        Message={
+            'Subject': {'Data': subject},
+            'Body': {
+                'Text': {'Data': body},
+                'Html': {'Data': html_body},
+            },
+        },
+    )
 
 
 def alert_todays_chores():
