@@ -43,21 +43,28 @@ class _S3DAL(ABC):
     def __init__(self, bucket_name, key_name):
         self._bucket_name = bucket_name
         self._key_name = key_name
+        self._client = boto3.client('s3', region_name='us-east-1')
 
     def _read(self) -> str:
-        client = boto3.client('s3', region_name='us-east-1')
-        data = client.get_object(Bucket=self._bucket_name, Key=self._key_name)['Body']
+        logger.info(f'Reading from s3://{self._bucket_name}/{self._key_name}')
+        data = self._client.get_object(
+            Bucket=self._bucket_name, Key=self._key_name
+        )['Body']
         return data.read()
 
     def _readlines(self) -> Iterable[str]:
-        client = boto3.client('s3', region_name='us-east-1')
-        data = client.get_object(Bucket=self._bucket_name, Key=self._key_name)['Body']
+        logger.info(f'Reading from s3://{self._bucket_name}/{self._key_name}')
+        data = self._client.get_object(
+            Bucket=self._bucket_name, Key=self._key_name
+        )['Body']
         for line in BytesIO(data.read()):
             yield line.decode('utf8').strip()
 
     def _upload(self, data: bytes):
-        client = boto3.client('s3', region_name='us-east-1')
-        client.put_object(Body=data, Bucket=self._bucket_name, Key=self._key_name)
+        logger.info(f'Writing to s3://{self._bucket_name}/{self._key_name}')
+        res = self._client.put_object(
+            Body=data, Bucket=self._bucket_name, Key=self._key_name
+        )
 
 
 class PeopleDAL(_S3DAL):
@@ -65,7 +72,7 @@ class PeopleDAL(_S3DAL):
     @cached_property
     def people(self):
         rows = [json.loads(row.strip()) for row in self._readlines()]
-        return [Person(row['name'], row['email']) for row in rows]
+        return [Person(row['name'], row['email'], row['total_work']) for row in rows]
 
     def store(self):
         f = BytesIO()
@@ -87,7 +94,7 @@ class ChoreDAL(_S3DAL):
 
 class ChoreBlacklistDAL(_S3DAL):
 
-    @property
+    @cached_property
     def blacklist(self):
         return json.loads(self._read())
 
