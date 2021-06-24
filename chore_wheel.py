@@ -4,11 +4,24 @@ import datetime
 from io import BytesIO
 from functools import cached_property
 import json
+import logging
 import os
+import sys
 from typing import Dict, Iterable
 
 import boto3
 from dateutil import rrule
+
+
+logger = logging.getLogger(__name__)
+root = logging.getLogger()
+root.setLevel(logging.INFO)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] %(message)s')
+handler.setFormatter(formatter)
+root.addHandler(handler)
 
 
 @dataclass
@@ -106,7 +119,7 @@ def _todays_chores():
         if occurrences[-1].date() == today.date():
             yield chore
         else:
-            print(f'Today is not occurrence for {chore}')
+            logger.info(f'Today is not occurrence for {chore}')
 
 
 def _next_person_for(chore):
@@ -119,21 +132,21 @@ def _next_person_for(chore):
 
 def _alert_person_to_chore(person, chore):
     msg = f'Hey {person.name}, time to {chore.name}'
-    print('******************EMAIL************************')
-    print(msg)
-    print('***********************************************')
+    logger.info('******************EMAIL************************')
+    logger.info(msg)
+    logger.info('***********************************************')
 
 
 def alert_todays_chores():
-    print(f"Peoples' work before: {people_dal.people}")
+    logger.info(f"Peoples' work before: {people_dal.people}")
     for chore in _todays_chores():
         person = _next_person_for(chore)
-        print(f'Assigned {person.name} to chore "{chore.name}"')
+        logger.info(f'Assigned {person.name} to chore "{chore.name}"')
         _alert_person_to_chore(person, chore)
         person.total_work += chore.work
 
     people_dal.store()
-    print(f"Peoples' work after: {people_dal.people}")
+    logger.info(f"Peoples' work after: {people_dal.people}")
 
 
 def lambda_handler(event, context):
