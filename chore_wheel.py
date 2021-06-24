@@ -42,9 +42,9 @@ class _S3DAL(ABC):
         for line in BytesIO(data.read()):
             yield line.decode('utf8').strip()
 
-    def _upload(self, f: BytesIO):
+    def _upload(self, data: bytes):
         client = boto3.client('s3', region_name='us-east-1')
-        client.put_object(Body=f, Bucket=self._bucket_name, Key=self._key_name)
+        client.put_object(Body=data, Bucket=self._bucket_name, Key=self._key_name)
 
 
 class PeopleDAL(_S3DAL):
@@ -61,7 +61,7 @@ class PeopleDAL(_S3DAL):
                 'name': p.name, 'email': p.email, 'total_work': p.total_work
             })
             f.write(person_json.encode('utf8') + b'\n')
-        self._upload(f)
+        self._upload(f.getvalue())
 
 
 class ChoreDAL(_S3DAL):
@@ -134,6 +134,11 @@ def alert_todays_chores():
 
     people_dal.store()
     print(f"Peoples' work after: {people_dal.people}")
+
+
+def lambda_handler(event, context):
+    alert_todays_chores()
+
 
 
 if __name__ == '__main__':
